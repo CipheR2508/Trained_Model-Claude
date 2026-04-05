@@ -75,7 +75,7 @@ class LoanRiskPredictor:
         if not os.path.exists(PIPELINE_PATH):
             raise FileNotFoundError(
                 f"Pipeline not found at {PIPELINE_PATH}\n"
-                "Run train_optimised.py first."
+                "Run train_models.py first."
             )
         self.pipeline  = joblib.load(PIPELINE_PATH)
         self.threshold = joblib.load(THRESHOLD_PATH)
