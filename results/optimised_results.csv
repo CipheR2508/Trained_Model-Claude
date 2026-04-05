@@ -1,0 +1,2 @@
+roc_auc,optimal_threshold,recall_default,f1_default,cv_mean_auc,cv_std_auc,best_params
+0.7338,0.6387,0.4687,0.345,0.726,0.0025,"{'classifier__subsample': 0.8, 'classifier__reg_lambda': 1, 'classifier__reg_alpha': 1, 'classifier__n_estimators': 300, 'classifier__min_child_weight': 5, 'classifier__max_depth': 3, 'classifier__learning_rate': 0.05, 'classifier__gamma': 1, 'classifier__colsample_bytree': 1.0}"
