@@ -43,7 +43,7 @@ DATA_PATH   = "../data/raw/Loan_default.csv"
 OUTPUT_DIR  = "../models"
 RESULTS_DIR = "../results"
 USE_SMOTE   = True          # set False to rely purely on scale_pos_weight
-N_ITER_SEARCH = 30          # number of RandomizedSearchCV iterations (increase for better tuning)
+N_ITER_SEARCH = 100         # increased from 30 for better accuracy
 CV_FOLDS    = 5
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -76,7 +76,13 @@ df["Loan_to_Income"]  = df["LoanAmount"] / df["Income_safe"]
 df["EMI_to_Income"]   = (df["LoanAmount"] / df["LoanTerm_safe"]) / df["Income_safe"]
 df["Credit_per_Line"] = df["CreditScore"] / (df["NumCreditLines_safe"] + 1)
 
-print("    Created: Loan_to_Income, EMI_to_Income, Credit_per_Line")
+# Advanced Boosters
+df["Age_Employment_Ratio"] = df["MonthsEmployed"] / (df["Age"] * 12 + 1e-8)
+df["Disposable_Income_Proxy"] = df["Income_safe"] - (df["LoanAmount"] / df["LoanTerm_safe"])
+df["Credit_Usage_Intensity"] = df["NumCreditLines_safe"] / (df["MonthsEmployed"] + 1)
+df["DTI_Age_Interaction"] = df["DTIRatio"] * df["Age"]
+
+print("    Created: Loan_to_Income, EMI_to_Income, Credit_per_Line, Age_Employment_Ratio, Disposable_Income_Proxy, Credit_Usage_Intensity, DTI_Age_Interaction")
 
 # ─────────────────────────────────────────────
 # 3. FEATURE SELECTION  (drop leakage + helpers)
@@ -96,9 +102,14 @@ print(f"    Final feature count: {X.shape[1]}")
 # 4. IDENTIFY COLUMN TYPES
 # ─────────────────────────────────────────────
 CATEGORICAL_COLS = X.select_dtypes(include="object").columns.tolist()
+# Education is ordinal, others are nominal
+NOMINAL_COLS = [c for c in CATEGORICAL_COLS if c != "Education"]
+ORDINAL_COLS = ["Education"] if "Education" in CATEGORICAL_COLS else []
+
 NUMERICAL_COLS   = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
 
-print(f"    Categorical: {CATEGORICAL_COLS}")
+print(f"    Nominal    : {NOMINAL_COLS}")
+print(f"    Ordinal    : {ORDINAL_COLS}")
 print(f"    Numerical  : {NUMERICAL_COLS}")
 
 # ─────────────────────────────────────────────
@@ -143,11 +154,16 @@ print(f"\n[5] scale_pos_weight = {scale_pos_weight_value:.2f}  "
 # ─────────────────────────────────────────────
 # 8. PREPROCESSOR
 # ─────────────────────────────────────────────
+from sklearn.preprocessing import OrdinalEncoder
+
+education_order = ["High School", "Bachelor's", "Master's", "PhD"]
+
 preprocessor = ColumnTransformer(
     transformers=[
-        ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False), CATEGORICAL_COLS),
+        ("nom", OneHotEncoder(handle_unknown="ignore", sparse_output=False), NOMINAL_COLS),
+        ("ord", OrdinalEncoder(categories=[education_order], handle_unknown="use_encoded_value", unknown_value=-1), ORDINAL_COLS),
     ],
-    remainder="passthrough",   # numeric columns pass through unchanged (trees don't need scaling)
+    remainder="passthrough",   # numeric columns pass through unchanged
     verbose_feature_names_out=False,
 )
 
@@ -183,15 +199,15 @@ print(f"\n[6] RandomizedSearchCV — {N_ITER_SEARCH} iterations, {CV_FOLDS}-fold
 print("    (This may take several minutes depending on hardware)")
 
 param_dist = {
-    "classifier__n_estimators":    [100, 200, 300],
-    "classifier__max_depth":       [3, 5, 7],
-    "classifier__learning_rate":   [0.03, 0.05, 0.1],
-    "classifier__subsample":       [0.8, 1.0],
-    "classifier__colsample_bytree":[0.8, 1.0],
-    "classifier__gamma":           [0, 1, 5],
-    "classifier__min_child_weight":[1, 5, 10],
-    "classifier__reg_alpha":       [0, 0.1, 1],      # L1 regularisation
-    "classifier__reg_lambda":      [1, 2, 5],         # L2 regularisation
+    "classifier__n_estimators":    [100, 200, 300, 500],
+    "classifier__max_depth":       [3, 5, 7, 9],
+    "classifier__learning_rate":   [0.01, 0.03, 0.05, 0.1],
+    "classifier__subsample":       [0.7, 0.8, 0.9, 1.0],
+    "classifier__colsample_bytree":[0.7, 0.8, 0.9, 1.0],
+    "classifier__gamma":           [0, 0.1, 0.5, 1, 5],
+    "classifier__min_child_weight":[1, 3, 5, 10],
+    "classifier__reg_alpha":       [0, 0.01, 0.1, 1],
+    "classifier__reg_lambda":      [1, 2, 5, 10],
 }
 
 cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=42)
